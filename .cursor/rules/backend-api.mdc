@@ -1,0 +1,161 @@
+---
+description: Backend API development patterns and conventions
+globs:
+  - src/server/api/**/*.ts
+  - src/server/services/**/*.ts
+  - src/server/middleware/**/*.ts
+alwaysApply: false
+---
+
+# Backend API Conventions
+
+## Response Format
+
+All endpoints MUST return responses using our `ApiResponse<T>` wrapper:
+
+```typescript
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: Record<string, string[]>;
+  };
+  meta?: ResponseMeta; // For pagination
+}
+```
+
+### Success Response
+```typescript
+const response: ApiResponse<User> = {
+  success: true,
+  data: user,
+};
+res.json(response);
+```
+
+### Error Response
+```typescript
+const response: ApiResponse<null> = {
+  success: false,
+  error: {
+    code: 'NOT_FOUND',
+    message: 'User not found',
+  },
+};
+res.status(404).json(response);
+```
+
+## Error Codes
+
+Use these standard error codes consistently:
+
+| Code | HTTP Status | When to Use |
+|------|-------------|-------------|
+| `VALIDATION_ERROR` | 400 | Invalid input data |
+| `UNAUTHORIZED` | 401 | Missing or invalid auth |
+| `FORBIDDEN` | 403 | Valid auth but insufficient permissions |
+| `NOT_FOUND` | 404 | Resource doesn't exist |
+| `CONFLICT` | 409 | Duplicate resource or conflict |
+| `INTERNAL_ERROR` | 500 | Unexpected server error |
+
+## Validation with Zod
+
+Always validate input at the top of route handlers:
+
+```typescript
+import { z } from 'zod';
+
+const createSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(100, 'Name too long'),
+  email: z.string().email('Invalid email format'),
+  role: z.enum(['admin', 'member', 'viewer']).optional().default('member'),
+});
+
+// In route handler:
+const validation = createSchema.safeParse(req.body);
+
+if (!validation.success) {
+  const response: ApiResponse<null> = {
+    success: false,
+    error: {
+      code: 'VALIDATION_ERROR',
+      message: 'Invalid input',
+      details: validation.error.flatten().fieldErrors as Record<string, string[]>,
+    },
+  };
+  res.status(400).json(response);
+  return;
+}
+
+const input = validation.data;
+```
+
+## Route File Structure
+
+Organize route files in this order:
+
+1. Imports
+2. Router initialization
+3. Validation schemas
+4. Route handlers (GET, POST, PUT, DELETE)
+5. Export
+
+## ID Generation
+
+Use descriptive prefixes for generated IDs:
+
+- `usr_` for users
+- `prj_` for projects
+- `key_` for API keys
+- `sess_` for sessions
+
+Use the `generateId(prefix)` helper from `../db`.
+
+## Authentication
+
+All routes (except health checks) should use auth middleware:
+
+```typescript
+import { requireAuth, requirePermission } from '../middleware/auth.middleware';
+
+// Require authentication
+router.get('/', requireAuth, async (req, res) => {
+  // Access user via req.auth
+  const userId = req.auth!.userId;
+});
+
+// Require specific permission
+router.delete('/:id', requireAuth, requirePermission('manage:users'), async (req, res) => {
+  // Only users with 'manage:users' permission can access
+});
+```
+
+## Soft Deletes
+
+For resources that need audit trails, use soft deletes:
+
+1. Add a `status` field with `'deleted'` option
+2. Set status to `'deleted'` instead of removing from database
+3. Filter out deleted items in list queries
+4. Return 404 for deleted items in get-by-id queries
+
+```typescript
+// Soft delete
+const updated: Resource = {
+  ...existing,
+  status: 'deleted',
+  updatedAt: now(),
+};
+db.resources.set(id, updated);
+```
+
+## Timestamps
+
+Always update timestamps:
+
+- Set `createdAt` and `updatedAt` on creation
+- Update `updatedAt` on any modification
+
+Use the `now()` helper from `../db` for consistency.

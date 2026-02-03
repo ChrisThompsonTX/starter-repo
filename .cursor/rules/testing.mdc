@@ -1,0 +1,241 @@
+---
+description: Testing patterns and conventions
+globs:
+  - src/tests/**/*.ts
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.spec.ts"
+alwaysApply: false
+---
+
+# Testing Conventions
+
+## Framework
+
+We use **Vitest** for testing. Import test utilities from `vitest`:
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+```
+
+## Test File Structure
+
+```typescript
+// ============================================
+// Feature Tests
+// Brief description
+// ============================================
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type { SomeType } from '../types';
+
+// --------------------------------------------
+// Test Utilities
+// --------------------------------------------
+
+const createMockDb = () => ({
+  items: new Map<string, Item>(),
+});
+
+const createTestItem = (overrides: Partial<Item> = {}): Item => ({
+  id: 'test_123',
+  name: 'Test Item',
+  ...overrides,
+});
+
+// --------------------------------------------
+// Tests
+// --------------------------------------------
+
+describe('Feature Name', () => {
+  let mockDb: ReturnType<typeof createMockDb>;
+
+  beforeEach(() => {
+    mockDb = createMockDb();
+    vi.clearAllMocks();
+  });
+
+  describe('GET /api/items', () => {
+    it('should return all items', () => {
+      // Arrange
+      // Act
+      // Assert
+    });
+  });
+});
+```
+
+## Test Organization
+
+Group tests by HTTP method for APIs:
+
+```typescript
+describe('Items API', () => {
+  describe('GET /api/items', () => { /* list tests */ });
+  describe('GET /api/items/:id', () => { /* get by id tests */ });
+  describe('POST /api/items', () => { /* create tests */ });
+  describe('PUT /api/items/:id', () => { /* update tests */ });
+  describe('DELETE /api/items/:id', () => { /* delete tests */ });
+  describe('Validation', () => { /* input validation tests */ });
+  describe('Authorization', () => { /* permission tests */ });
+});
+```
+
+## Naming Conventions
+
+- Test files: `*.test.ts` for unit tests, `*.spec.ts` for integration
+- Describe blocks: Use the feature or component name
+- It blocks: Start with "should" or be descriptive
+
+```typescript
+// Good
+it('should return user by ID')
+it('should reject invalid email format')
+it('should prevent self-deletion')
+
+// Avoid
+it('test 1')
+it('works')
+```
+
+## Arrange-Act-Assert Pattern
+
+Always structure tests with clear AAA sections:
+
+```typescript
+it('should create item with valid input', () => {
+  // Arrange - Set up test data and conditions
+  const input = { name: 'New Item', type: 'standard' };
+  
+  // Act - Execute the code being tested
+  const item: Item = {
+    id: 'item_new',
+    ...input,
+    createdAt: new Date().toISOString(),
+  };
+  mockDb.items.set(item.id, item);
+  
+  // Assert - Verify the results
+  expect(mockDb.items.has('item_new')).toBe(true);
+  expect(mockDb.items.get('item_new')?.name).toBe('New Item');
+});
+```
+
+## What to Test
+
+### For APIs:
+- ✅ Happy path (valid input → expected output)
+- ✅ Validation (invalid input → proper error)
+- ✅ Not found (missing resource → 404)
+- ✅ Authorization (insufficient permissions → 403)
+- ✅ Edge cases (empty data, boundary values)
+- ✅ Soft deletes (deleted resources not returned)
+
+### For Services:
+- ✅ Core functionality
+- ✅ Error handling
+- ✅ Edge cases
+- ✅ Input validation
+
+### For Components:
+- ✅ Renders correctly with props
+- ✅ Loading, error, empty states
+- ✅ User interactions
+- ✅ Form submission
+
+## Assertions
+
+```typescript
+// Equality
+expect(value).toBe(expected);           // Strict equality
+expect(object).toEqual(expected);       // Deep equality
+
+// Truthiness
+expect(value).toBeTruthy();
+expect(value).toBeFalsy();
+expect(value).toBeDefined();
+expect(value).toBeUndefined();
+
+// Numbers
+expect(number).toBeGreaterThan(n);
+expect(number).toBeLessThan(n);
+
+// Strings
+expect(string).toMatch(/pattern/);
+expect(string).toContain('substring');
+
+// Arrays
+expect(array).toHaveLength(n);
+expect(array).toContain(item);
+
+// Objects
+expect(object).toHaveProperty('key');
+expect(object).toHaveProperty('key', value);
+
+// Errors
+expect(() => fn()).toThrow();
+expect(() => fn()).toThrow('message');
+```
+
+## Test Helpers
+
+Create reusable test utilities:
+
+```typescript
+// Factory functions
+const createTestUser = (overrides: Partial<User> = {}): User => ({
+  id: 'usr_test',
+  email: 'test@example.com',
+  name: 'Test User',
+  role: 'member',
+  createdAt: '2024-01-01T00:00:00Z',
+  updatedAt: '2024-01-01T00:00:00Z',
+  ...overrides,
+});
+
+// API response helpers
+const createApiResponse = <T>(data: T): ApiResponse<T> => ({
+  success: true,
+  data,
+});
+
+const createApiError = (code: string, message: string): ApiResponse<null> => ({
+  success: false,
+  error: { code, message },
+});
+```
+
+## Mocking
+
+```typescript
+// Mock functions
+const mockFn = vi.fn();
+mockFn.mockReturnValue('value');
+mockFn.mockResolvedValue('async value');
+
+// Verify calls
+expect(mockFn).toHaveBeenCalled();
+expect(mockFn).toHaveBeenCalledWith(arg1, arg2);
+expect(mockFn).toHaveBeenCalledTimes(2);
+
+// Clear mocks between tests
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+```
+
+## Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run tests once (CI mode)
+npm run test:run
+
+# Run specific file
+npm test -- users.test.ts
+
+# Run with coverage
+npm test -- --coverage
+```
